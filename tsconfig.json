@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "module": "esnext"
+  },
+  "include": ["./src/*.ts"],
+  "exclude": ["node_modules"],
+  "typeRoots": ["./node_modules/@types"]
+}
