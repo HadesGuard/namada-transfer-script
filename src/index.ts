@@ -6,6 +6,8 @@ import {
   getNetworkConfig
 } from "./config";
 
+let retryInterval: NodeJS.Timeout | null = null;
+
 async function submitTransfer(mnemonicPhrase: string, recipientAddress: string, amount: number | null, network: "testnet" | "mainnet"): Promise<any> {
   console.log("Submitting transfer for network:", network);
   const now = new Date();
@@ -119,6 +121,102 @@ async function submitTransfer(mnemonicPhrase: string, recipientAddress: string, 
   }
 }
 
+async function checkEpoch(network: "testnet" | "mainnet"): Promise<number> {
+  try {
+    if(network === "testnet"){
+      const response = await fetch('https://api.testnet.namada.valopers.com/chain-data/epoch');
+      if (!response.ok) {
+        throw new Error('Failed to fetch epoch data');
+      }
+      const data = await response.json();
+      return data.epoch;
+    } else {
+      const response = await fetch('https://api.namada.valopers.com/chain-data/epoch');
+      if (!response.ok) {
+        throw new Error('Failed to fetch epoch data');
+      }
+      const data = await response.json();
+      return data.epoch;
+    }
+  } catch (error) {
+    console.error('Error fetching epoch:', error);
+    throw error;
+  }
+}
+
+async function checkAndRetry(mnemonics: string[], recipient: string, amount: number | null, network: "testnet" | "mainnet", targetEpoch: number) {
+  try {
+    const currentEpoch = await checkEpoch(network);
+    if (currentEpoch >= targetEpoch) {
+      if (retryInterval) {
+        clearInterval(retryInterval);
+        retryInterval = null;
+      }
+      await processTransfers(mnemonics, recipient, amount, network);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error checking epoch:', error);
+    return false;
+  }
+}
+
+async function processTransfers(mnemonics: string[], recipient: string, amount: number | null, network: "testnet" | "mainnet") {
+  const statusDiv = document.getElementById('status') as HTMLDivElement;
+  const progressDiv = document.getElementById('progress') as HTMLDivElement;
+  const transferBtn = document.getElementById('transferBtn') as HTMLButtonElement;
+  const scheduleRetryBtn = document.getElementById('scheduleRetryBtn') as HTMLButtonElement;
+
+  try {
+    transferBtn.disabled = true;
+    scheduleRetryBtn.disabled = true;
+    statusDiv.textContent = `Processing ${mnemonics.length} transfers...`;
+    statusDiv.className = 'status';
+    progressDiv.innerHTML = '';
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < mnemonics.length; i++) {
+      const mnemonic = mnemonics[i].trim();
+      const progressItem = document.createElement('div');
+      progressItem.className = 'progress-item pending';
+      progressItem.textContent = `Processing wallet ${i + 1}/${mnemonics.length}...`;
+      progressDiv.appendChild(progressItem);
+
+      try {
+        const result = await submitTransfer(mnemonic, recipient, amount, network);
+        progressItem.textContent = `Wallet ${i + 1}: Transfer successful! Hash: ${result.hash}`;
+        progressItem.className = 'progress-item success';
+        successCount++;
+      } catch (error) {
+        progressItem.textContent = `Wallet ${i + 1}: Error - ${error.message}`;
+        progressItem.className = 'progress-item error';
+        errorCount++;
+      }
+
+      progressDiv.scrollTop = progressDiv.scrollHeight;
+    }
+
+    statusDiv.textContent = `Completed: ${successCount} successful, ${errorCount} failed`;
+    statusDiv.className = successCount > 0 ? 'status success' : 'status error';
+    
+    // Reset retry button text if it was in "Cancel Retry" state
+    if (retryInterval) {
+      clearInterval(retryInterval);
+      retryInterval = null;
+      scheduleRetryBtn.textContent = 'Schedule Retry';
+    }
+  } catch (error) {
+    statusDiv.textContent = `Error: ${error.message}`;
+    statusDiv.className = 'status error';
+  } finally {
+    transferBtn.disabled = false;
+    scheduleRetryBtn.disabled = false;
+  }
+}
+
 // UI Handling
 document.addEventListener('DOMContentLoaded', () => {
   const mnemonicsInput = document.getElementById('mnemonics') as HTMLTextAreaElement;
@@ -126,6 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const amountInput = document.getElementById('amount') as HTMLInputElement;
   const transferAllCheckbox = document.getElementById('transferAll') as HTMLInputElement;
   const transferBtn = document.getElementById('transferBtn') as HTMLButtonElement;
+  const scheduleRetryBtn = document.getElementById('scheduleRetryBtn') as HTMLButtonElement;
+  const targetEpochInput = document.getElementById('targetEpoch') as HTMLInputElement;
   const statusDiv = document.getElementById('status') as HTMLDivElement;
   const progressDiv = document.getElementById('progress') as HTMLDivElement;
   const networkSelect = document.getElementById('network') as HTMLSelectElement;
@@ -154,44 +254,44 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    try {
-      transferBtn.disabled = true;
-      statusDiv.textContent = `Processing ${mnemonics.length} transfers...`;
-      statusDiv.className = 'status';
-      progressDiv.innerHTML = '';
+    await processTransfers(mnemonics, recipient, amount, network);
+  });
 
-      let successCount = 0;
-      let errorCount = 0;
+  scheduleRetryBtn.addEventListener('click', async () => {
+    const mnemonics = mnemonicsInput.value.trim().split('\n').filter(m => m.trim());
+    const recipient = recipientInput.value.trim();
+    const amount = transferAllCheckbox.checked ? null : parseFloat(amountInput.value);
+    const targetEpoch = parseInt(targetEpochInput.value);
 
-      for (let i = 0; i < mnemonics.length; i++) {
-        const mnemonic = mnemonics[i].trim();
-        const progressItem = document.createElement('div');
-        progressItem.className = 'progress-item pending';
-        progressItem.textContent = `Processing wallet ${i + 1}/${mnemonics.length}...`;
-        progressDiv.appendChild(progressItem);
-
-        try {
-          const result = await submitTransfer(mnemonic, recipient, amount, network);
-          progressItem.textContent = `Wallet ${i + 1}: Transfer successful! Hash: ${result.hash}`;
-          progressItem.className = 'progress-item success';
-          successCount++;
-        } catch (error) {
-          progressItem.textContent = `Wallet ${i + 1}: Error - ${error.message}`;
-          progressItem.className = 'progress-item error';
-          errorCount++;
-        }
-
-        // Scroll to bottom of progress
-        progressDiv.scrollTop = progressDiv.scrollHeight;
-      }
-
-      statusDiv.textContent = `Completed: ${successCount} successful, ${errorCount} failed`;
-      statusDiv.className = successCount > 0 ? 'status success' : 'status error';
-    } catch (error) {
-      statusDiv.textContent = `Error: ${error.message}`;
+    if (mnemonics.length === 0 || !recipient || (!transferAllCheckbox.checked && isNaN(amount)) || isNaN(targetEpoch)) {
+      statusDiv.textContent = 'Please fill in all fields correctly';
       statusDiv.className = 'status error';
-    } finally {
-      transferBtn.disabled = false;
+      return;
+    }
+
+    if (retryInterval) {
+      clearInterval(retryInterval);
+      retryInterval = null;
+      scheduleRetryBtn.textContent = 'Schedule Retry';
+      statusDiv.textContent = 'Retry cancelled';
+      statusDiv.className = 'status';
+      return;
+    }
+
+    scheduleRetryBtn.textContent = 'Cancel Retry';
+    statusDiv.textContent = `Waiting for epoch ${targetEpoch}...`;
+    statusDiv.className = 'status';
+
+    // Check immediately first
+    const shouldRetry = await checkAndRetry(mnemonics, recipient, amount, network, targetEpoch);
+    if (!shouldRetry) {
+      // If not ready, start interval checking
+      retryInterval = setInterval(async () => {
+        const shouldRetry = await checkAndRetry(mnemonics, recipient, amount, network, targetEpoch);
+        if (shouldRetry) {
+          scheduleRetryBtn.textContent = 'Schedule Retry';
+        }
+      }, 1000); // Check every 30 seconds
     }
   });
 });

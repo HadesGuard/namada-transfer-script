@@ -34,7 +34,12 @@
           </label>
         </div>
       </div>
+      <div class="form-group">
+        <label for="targetEpoch">Target Epoch for Retry:</label>
+        <input type="number" id="targetEpoch" value="766" min="1">
+      </div>
       <button id="transferBtn">Transfer</button>
+      <button id="scheduleRetryBtn" class="secondary-btn">Schedule Retry</button>
       <div id="status" class="status"></div>
       <div id="progress" class="progress"></div>
     </div>
