@@ -11,7 +11,7 @@
   "scripts": {
     "test:web": "webpack serve --config webpack.config.js",
     "build": "webpack --mode production",
-    "start": "serve dist -l 2222"
+    "start": "serve dist -l 2022"
   },
   "devDependencies": {
     "@types/node": "^20.11.26",
