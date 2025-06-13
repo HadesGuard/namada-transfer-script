@@ -141,4 +141,19 @@ button:disabled {
 
 input[type="number"] {
   width: 200px;
+}
+
+.network-select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 16px;
+  background-color: white;
+  cursor: pointer;
+}
+
+.network-select:focus {
+  outline: none;
+  border-color: #4CAF50;
 } 

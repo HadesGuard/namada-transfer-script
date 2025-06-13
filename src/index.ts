@@ -2,20 +2,16 @@ import { getSdk } from "@namada/sdk/web";
 import init from "@namada/sdk/web-init";
 import { TransparentTransferProps, WrapperTxProps } from "@namada/types";
 import BigNumber from "bignumber.js";
-
 import {
-  NODE_URL,
-  NATIVE_TOKEN,
-  CHAIN_ID,
-  STORAGE_PATH,
-  MASP_URL,
+  getNetworkConfig
 } from "./config";
 
-async function submitTransfer(mnemonicPhrase: string, recipientAddress: string, amount: number | null): Promise<any> {
+async function submitTransfer(mnemonicPhrase: string, recipientAddress: string, amount: number | null, network: "testnet" | "mainnet"): Promise<any> {
+  console.log("Submitting transfer for network:", network);
   const now = new Date();
   now.setHours(now.getHours() + 1);
   const utcTimestamp = Math.floor(now.getTime() / 1000);
-
+  const { NODE_URL, MASP_URL, STORAGE_PATH, NATIVE_TOKEN, CHAIN_ID } = getNetworkConfig(network);
   try {
     const { cryptoMemory } = await init();
     const sdk = getSdk(
@@ -132,6 +128,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const transferBtn = document.getElementById('transferBtn') as HTMLButtonElement;
   const statusDiv = document.getElementById('status') as HTMLDivElement;
   const progressDiv = document.getElementById('progress') as HTMLDivElement;
+  const networkSelect = document.getElementById('network') as HTMLSelectElement;
+  let network = localStorage.getItem('selectedNetwork') as "testnet" | "mainnet" || "mainnet";
+  networkSelect.value = network;
+
+  // Update network when changed
+  networkSelect.addEventListener('change', () => {
+    network = networkSelect.value as "testnet" | "mainnet";
+    localStorage.setItem('selectedNetwork', network);
+  });
 
   // Disable amount input when transfer all is checked
   transferAllCheckbox.addEventListener('change', () => {
@@ -166,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         progressDiv.appendChild(progressItem);
 
         try {
-          const result = await submitTransfer(mnemonic, recipient, amount);
+          const result = await submitTransfer(mnemonic, recipient, amount, network);
           progressItem.textContent = `Wallet ${i + 1}: Transfer successful! Hash: ${result.hash}`;
           progressItem.className = 'progress-item success';
           successCount++;
